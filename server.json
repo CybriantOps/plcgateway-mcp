@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.plcgateway/plcgateway",
+  "title": "PLCGateway",
+  "description": "Ask your plant: live PLC data, alarms, history, OEE and reports from your on-premises PLCGateway.",
+  "websiteUrl": "https://plcgateway.com/ai-mcp",
+  "repository": {
+    "url": "https://github.com/CybriantOps/plcgateway-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@plcgateway/mcp",
+      "version": "0.1.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "PLCGATEWAY_URL",
+          "description": "Address of your PLCGateway SCADA or Connect, e.g. http://192.168.1.50:8080",
+          "isRequired": true,
+          "format": "string"
+        },
+        {
+          "name": "PLCGATEWAY_TOKEN",
+          "description": "API token (PLCGateway → Settings → API token), or the MCP configuration token for device/tag setup",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

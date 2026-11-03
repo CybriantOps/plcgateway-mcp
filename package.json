@@ -1,0 +1,45 @@
+{
+  "name": "@plcgateway/mcp",
+  "version": "0.1.0",
+  "description": "Connect AI assistants (Claude, Cursor, any MCP client) to PLCGateway: live PLC and machine data, alarms, history, OEE and reports from your own plant.",
+  "mcpName": "com.plcgateway/plcgateway",
+  "type": "module",
+  "bin": {
+    "plcgateway-mcp": "bin/plcgateway-mcp.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "plc",
+    "scada",
+    "opc-ua",
+    "modbus",
+    "siemens-s7",
+    "iiot",
+    "oee",
+    "industrial-automation",
+    "ai"
+  ],
+  "homepage": "https://plcgateway.com/ai-mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CybriantOps/plcgateway-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/CybriantOps/plcgateway-mcp/issues"
+  },
+  "license": "MIT",
+  "author": "plcgateway.com (https://plcgateway.com)"
+}
