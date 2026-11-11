@@ -12,6 +12,10 @@
  *   PLCGATEWAY_TOKEN    --token    API token or MCP configuration token (required)
  *   PLCGATEWAY_TIMEOUT  --timeout  request timeout in seconds (default 120)
  *
+ * If PLCGateway cannot be reached when the client connects, the bridge stays up in offline mode:
+ * it offers one tool, connection_status, that says what is wrong, and it switches to the real
+ * tool list by itself once PLCGateway answers.
+ *
  * No dependencies; Node.js 18+.
  */
 import { createInterface } from "node:readline";
@@ -93,14 +97,35 @@ export function parseSse(text) {
   return out;
 }
 
-export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fetch }) {
+const FALLBACK_PROTOCOL = "2025-06-18";
+const CONNECT_TIMEOUT_MS = 8000; // initialize is quick; do not make the client wait the full request timeout
+const RETRY_EVERY_MS = 15000;
+
+const STATUS_TOOL = {
+  name: "connection_status",
+  title: "PLCGateway connection status",
+  description:
+    "Report whether the bridge can reach PLCGateway and, if not, why and what to check (address, token, MCP setting). " +
+    "While PLCGateway is unreachable this is the only tool; the plant tools (tags, alarms, history, OEE, reports) appear once it answers.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false },
+};
+
+export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fetch, now = Date.now }) {
   let sessionId = null;
   let protocolVersion = null;
+  let lastFailure = null; // why the most recent forward failed, or null
+  let offline = false;
+  let offlineReason = null;
+  let initMsg = null;
+  let lastRetry = 0;
+  let connecting = Promise.resolve(); // settles when the client's initialize has been answered
 
   const errorFor = (msg, code, message) =>
     msg && msg.id !== undefined && msg.id !== null && msg.method ? { jsonrpc: "2.0", id: msg.id, error: { code, message } } : null;
 
-  async function forward(msg) {
+  async function forward(msg, limitMs = timeoutMs) {
+    lastFailure = null;
     const headers = {
       "content-type": "application/json",
       accept: "application/json, text/event-stream",
@@ -112,10 +137,11 @@ export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fe
 
     let res;
     try {
-      res = await fetchImpl(endpoint, { method: "POST", headers, body: JSON.stringify(msg), signal: AbortSignal.timeout(timeoutMs) });
+      res = await fetchImpl(endpoint, { method: "POST", headers, body: JSON.stringify(msg), signal: AbortSignal.timeout(limitMs) });
     } catch (e) {
-      const reason = e?.name === "TimeoutError" ? `timed out after ${timeoutMs / 1000}s` : e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.cause?.message ?? e?.message ?? String(e);
+      const reason = e?.name === "TimeoutError" ? `timed out after ${limitMs / 1000}s` : e?.cause?.code ?? e?.cause?.errors?.[0]?.code ?? e?.cause?.message ?? e?.message ?? String(e);
       log(`cannot reach ${endpoint}: ${reason}`);
+      lastFailure = `PLCGateway not reachable at ${endpoint}: ${reason}`;
       return [errorFor(msg, -32000, `PLCGateway not reachable at ${endpoint}: ${reason}`)].filter(Boolean);
     }
 
@@ -132,6 +158,7 @@ export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fe
             ? "MCP may be disabled in PLCGateway settings, or the URL is wrong"
             : text.slice(0, 200);
       log(`HTTP ${res.status} from ${endpoint}: ${hint}`);
+      lastFailure = `PLCGateway returned HTTP ${res.status}: ${hint}`;
       return [errorFor(msg, -32000, `PLCGateway returned HTTP ${res.status}: ${hint}`)].filter(Boolean);
     }
     if (!text.trim()) return [];
@@ -141,6 +168,7 @@ export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fe
       replies = ct.includes("text/event-stream") ? parseSse(text) : [JSON.parse(text)];
     } catch (e) {
       log(`invalid response from PLCGateway: ${e.message}`);
+      lastFailure = "Invalid response from PLCGateway";
       return [errorFor(msg, -32603, "Invalid response from PLCGateway")].filter(Boolean);
     }
     const flat = replies.flat();
@@ -148,6 +176,85 @@ export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fe
       if (msg.method === "initialize" && r?.result?.protocolVersion) protocolVersion = r.result.protocolVersion;
     }
     return flat;
+  }
+
+  // ---- offline mode: PLCGateway did not answer the client's initialize
+
+  const statusText = () =>
+    offline
+      ? `Not connected. ${offlineReason}\n\nCheck: PLCGateway is running and reachable from this computer at ${endpoint}; ` +
+        "MCP is enabled in PLCGateway settings; PLCGATEWAY_TOKEN is the current API token (Settings → API token). " +
+        "The bridge retries by itself; the plant tools appear when PLCGateway answers."
+      : `Connected to PLCGateway at ${endpoint}.`;
+
+  /** Replay the client's initialize against PLCGateway; on success leave offline mode. */
+  async function tryReconnect() {
+    if (now() - lastRetry < RETRY_EVERY_MS) return false;
+    lastRetry = now();
+    const replies = await forward(initMsg, Math.min(timeoutMs, CONNECT_TIMEOUT_MS));
+    if (lastFailure || !replies.some((r) => r?.result)) {
+      offlineReason = lastFailure ?? offlineReason;
+      return false;
+    }
+    await forward({ jsonrpc: "2.0", method: "notifications/initialized" });
+    offline = false;
+    log(`connected to ${endpoint}`);
+    write({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+    return true;
+  }
+
+  function answerOffline(msg) {
+    if (msg.id === undefined || msg.id === null || !msg.method) return []; // notifications and stray replies
+    const ok = (result) => [{ jsonrpc: "2.0", id: msg.id, result }];
+    if (msg.method === "ping") return ok({});
+    if (msg.method === "tools/list") return ok({ tools: [STATUS_TOOL] });
+    if (msg.method === "tools/call") {
+      const isStatus = msg.params?.name === STATUS_TOOL.name;
+      return ok({ content: [{ type: "text", text: statusText() }], isError: !isStatus });
+    }
+    return [{ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: offlineReason } }];
+  }
+
+  async function handle(msg) {
+    if (msg?.method === "initialize") {
+      // Lines arrive concurrently; later messages wait until we know whether we are online.
+      let done;
+      connecting = new Promise((r) => (done = r));
+      try {
+        return await connect(msg);
+      } finally {
+        done();
+      }
+    }
+    await connecting;
+    if (offline) {
+      const isRequest = msg?.id !== undefined && msg?.id !== null && msg?.method;
+      if (!isRequest || !(await tryReconnect())) return answerOffline(msg ?? {});
+    }
+    return forward(msg);
+  }
+
+  async function connect(msg) {
+    initMsg = msg;
+    offline = false;
+    const replies = await forward(msg, Math.min(timeoutMs, CONNECT_TIMEOUT_MS));
+    if (!lastFailure) return replies;
+    offline = true;
+    offlineReason = lastFailure;
+    lastRetry = now();
+    log("starting in offline mode; only connection_status is available until PLCGateway answers");
+    return [
+      {
+        jsonrpc: "2.0",
+        id: msg.id,
+        result: {
+          protocolVersion: msg.params?.protocolVersion ?? FALLBACK_PROTOCOL,
+          capabilities: { tools: { listChanged: true } },
+          serverInfo: { name: "plcgateway-mcp", title: "PLCGateway (not connected)", version: VERSION },
+          instructions: `PLCGateway is not reachable yet. Call ${STATUS_TOOL.name} to see why.`,
+        },
+      },
+    ];
   }
 
   return {
@@ -161,7 +268,7 @@ export function createBridge({ endpoint, token, timeoutMs, write, fetchImpl = fe
         return;
       }
       const batch = Array.isArray(msg) ? msg : [msg];
-      for (const m of batch) for (const r of await forward(m)) write(r);
+      for (const m of batch) for (const r of await handle(m)) write(r);
     },
     async close() {
       if (!sessionId) return;

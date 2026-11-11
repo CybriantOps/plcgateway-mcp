@@ -1,6 +1,6 @@
 {
   "name": "@plcgateway/mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Connect AI assistants (Claude, Cursor, any MCP client) to PLCGateway: live PLC and machine data, alarms, history, OEE and reports from your own plant.",
   "mcpName": "com.plcgateway/plcgateway",
   "type": "module",
