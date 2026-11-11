@@ -1,6 +1,8 @@
 # PLCGateway MCP
 
 [![npm](https://img.shields.io/npm/v/@plcgateway/mcp)](https://www.npmjs.com/package/@plcgateway/mcp)
+[![CI](https://github.com/CybriantOps/plcgateway-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/CybriantOps/plcgateway-mcp/actions/workflows/ci.yml)
+[![PLCGateway MCP server](https://glama.ai/mcp/servers/CybriantOps/plcgateway-mcp/badges/score.svg)](https://glama.ai/mcp/servers/CybriantOps/plcgateway-mcp)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![node](https://img.shields.io/node/v/@plcgateway/mcp)](package.json)
 
