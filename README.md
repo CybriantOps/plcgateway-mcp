@@ -124,6 +124,10 @@ For HTTPS with your own certificate authority, set `NODE_EXTRA_CA_CERTS=/path/to
 
 The bridge logs to stderr (visible in your client's MCP logs).
 
+If PLCGateway cannot be reached when the client connects, the bridge stays up in **offline mode** with a single tool,
+`connection_status`. Ask the assistant "why is PLCGateway not connected?" and it reports the reason. The bridge retries
+by itself, and the plant tools appear once PLCGateway answers.
+
 | Message | What to check |
 |---|---|
 | `PLCGateway not reachable` | Address and port, firewall, PLCGateway running |

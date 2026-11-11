@@ -116,6 +116,70 @@ test("binary: end-to-end over stdio; stdout carries only JSON-RPC", async () => 
   assert.ok(!r.stderr.includes(TOKEN), "token never logged");
 });
 
+test("offline mode: stays up without PLCGateway, explains why, and reconnects by itself", async () => {
+  const out = [];
+  let clock = 0;
+  let endpoint = "http://127.0.0.1:1/mcp";
+  const b = createBridge({
+    endpoint: "unused",
+    token: TOKEN,
+    timeoutMs: 1000,
+    write: (m) => out.push(m),
+    now: () => clock,
+    fetchImpl: (_url, init) => fetch(endpoint, init),
+  });
+  const send = (m) => b.handleLine(JSON.stringify({ jsonrpc: "2.0", ...m }));
+
+  await send({ id: 1, method: "initialize", params: { protocolVersion: "2025-03-26" } });
+  assert.equal(out[0].result.protocolVersion, "2025-03-26");
+  assert.equal(out[0].result.serverInfo.name, "plcgateway-mcp");
+  assert.deepEqual(out[0].result.capabilities, { tools: { listChanged: true } });
+
+  await send({ method: "notifications/initialized" });
+  await send({ id: 2, method: "tools/list" });
+  assert.deepEqual(out[1].result.tools.map((t) => t.name), ["connection_status"]);
+  await send({ id: 3, method: "tools/call", params: { name: "connection_status", arguments: {} } });
+  assert.match(out[2].result.content[0].text, /Not connected.*not reachable/s);
+  assert.equal(out[2].result.isError, false);
+  await send({ id: 4, method: "tools/call", params: { name: "active_alarms" } });
+  assert.equal(out[3].result.isError, true);
+  await send({ id: 5, method: "ping" });
+  assert.deepEqual(out[4].result, {});
+  assert.equal(out.length, 5, "notifications get no reply");
+
+  // PLCGateway comes up: the next request after the retry interval reconnects and is forwarded.
+  endpoint = `${base}/mcp`;
+  await send({ id: 6, method: "tools/list" });
+  assert.equal(out[5].result.tools[0].name, "connection_status", "no retry before the interval");
+  clock += 20000;
+  await send({ id: 7, method: "tools/list" });
+  assert.equal(out[6].method, "notifications/tools/list_changed");
+  assert.equal(out[7].result.tools[0].name, "active_alarms");
+  await send({ id: 8, method: "tools/call", params: { name: "active_alarms" } });
+  assert.equal(out[8].result.content[0].text, "called active_alarms");
+});
+
+test("offline mode: a wrong token at connect is reported by connection_status", async () => {
+  const out = [];
+  const b = createBridge({ endpoint: `${base}/mcp`, token: "wrong", timeoutMs: 1000, write: (m) => out.push(m) });
+  await b.handleLine(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }));
+  await b.handleLine(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "connection_status" } }));
+  assert.match(out[1].result.content[0].text, /HTTP 401.*PLCGATEWAY_TOKEN/s);
+  assert.ok(!JSON.stringify(out).includes("wrong"), "token never returned");
+});
+
+test("binary: introspection works with an unreachable PLCGateway", async () => {
+  const r = await runBin({ PLCGATEWAY_URL: "http://127.0.0.1:1", PLCGATEWAY_TOKEN: "dummy" }, [
+    JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } } }),
+    JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+    JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
+  ]);
+  assert.equal(r.code, 0, r.stderr);
+  const msgs = r.stdout.trim().split("\n").map((l) => JSON.parse(l));
+  assert.equal(msgs.find((m) => m.id === 2).result.tools[0].name, "connection_status");
+  assert.match(r.stderr, /offline mode/);
+});
+
 test("binary: missing config exits with a clear message", async () => {
   const r = await runBin({}, []);
   assert.equal(r.code, 2);

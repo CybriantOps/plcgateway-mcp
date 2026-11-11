@@ -8,13 +8,13 @@
     "url": "https://github.com/CybriantOps/plcgateway-mcp",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.1.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@plcgateway/mcp",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
