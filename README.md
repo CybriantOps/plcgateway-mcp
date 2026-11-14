@@ -5,6 +5,7 @@
 [![PLCGateway MCP server](https://glama.ai/mcp/servers/CybriantOps/plcgateway-mcp/badges/score.svg)](https://glama.ai/mcp/servers/CybriantOps/plcgateway-mcp)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![node](https://img.shields.io/node/v/@plcgateway/mcp)](package.json)
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/cybriantops/plcgateway-mcp)
 
 **MCP server for PLCs, CNC machines and SCADA.** Ask an AI assistant about live machine data, alarms, history and OEE,
 and let it add devices, tags, screens and reports, on your own network.
