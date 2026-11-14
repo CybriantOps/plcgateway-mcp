@@ -30,6 +30,28 @@ AI client ──stdio──▶ @plcgateway/mcp ──HTTP (your network)──�
 - "Build a report dashboard with production and energy per shift for line 1." *(draft for you to review)*
 - "Add the Modbus TCP meter at 192.168.1.40 as 'Compressor 2 energy meter'." *(needs the MCP configuration token)*
 
+## With Claude for Manufacturing
+
+[Claude for Manufacturing](https://claude.com/resources/articles/claude-for-manufacturing) is Anthropic's plugin for
+Claude Team and Enterprise. It drafts quotes, quality reports and breakdown investigations from business systems
+(Autodesk Fusion, Infor, Microsoft 365, Oracle NetSuite). It doesn't read the shop floor. Add PLCGateway next to it and
+those skills can work with live machine data (maintenance, SPC monitor and energy tools come with the Quality & Maintenance and
+Energy modules):
+
+| Skill area | What Claude reads from PLCGateway |
+|---|---|
+| Diagnosing breakdowns | `active_alarms`, `alarm_history`, `alarm_stats`, `query_history` (sensor trends before the stop), `list_maintenance` |
+| Investigating failed inspections | `list_production_batches`, `query_history`, `spc_analysis`, `run_spc_monitor` |
+| Reporting on production | `get_production_kpis`, `calculate_oee`, `energy_summary`, `generate_report` |
+
+- **Claude desktop app:** add this bridge as shown under [Setup](#setup). It talks only to PLCGateway on your network.
+- **Claude on the web:** a custom connector there needs PLCGateway's `/mcp` endpoint to be reachable over HTTPS.
+- **Roles still apply.** With the API token, Claude can read and write values (operator rights). It cannot change the
+  configuration unless you switch on the MCP configuration token. Every change is logged with the user's name.
+
+*Claude and Claude for Manufacturing are products of Anthropic. PLCGateway is an independent product and is not
+affiliated with or endorsed by Anthropic.*
+
 ## Tools
 
 The tools come from the PLCGateway you connect to, so the list follows your edition and the rights of your token.
