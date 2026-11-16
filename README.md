@@ -22,6 +22,8 @@ AI client ──stdio──▶ @plcgateway/mcp ──HTTP (your network)──�
 
 - PLCGateway runs on your premises. The bridge talks only to the address you give it; it collects nothing and sends nothing elsewhere.
 - The assistant works with the rights of the token you give it, the same roles as people.
+- **Nothing reaches a PLC without a person.** With write approval (on by default for the API token), a value the assistant
+  wants to write waits until an operator approves it in PLCGateway. See [Safety](#safety).
 
 ## What you can ask
 
@@ -47,8 +49,9 @@ Energy modules):
 
 - **Claude desktop app:** add this bridge as shown under [Setup](#setup). It talks only to PLCGateway on your network.
 - **Claude on the web:** a custom connector there needs PLCGateway's `/mcp` endpoint to be reachable over HTTPS.
-- **Roles still apply.** With the API token, Claude can read and write values (operator rights). It cannot change the
-  configuration unless you switch on the MCP configuration token. Every change is logged with the user's name.
+- **Roles still apply.** With the API token Claude has operator rights. A write it asks for waits for a person's approval
+  in PLCGateway (write approval, on by default). It cannot change the configuration unless you switch on the MCP
+  configuration token. The log names who asked and who approved.
 
 *Claude and Claude for Manufacturing are products of Anthropic. PLCGateway is an independent product and is not
 affiliated with or endorsed by Anthropic.*
@@ -60,10 +63,10 @@ The tools come from the PLCGateway you connect to, so the list follows your edit
 | Group | Tools |
 |---|---|
 | Context | `get_site_context`, `system_status`, `help`, `list_protocols` |
-| Data | `list_devices`, `list_tags`, `read_tags`, `query_history`, `write_tag` |
+| Data | `list_devices`, `list_tags`, `read_tags`, `query_history`, `write_tag`, `write_request_status` |
 | Alarms | `active_alarms`, `alarm_history`, `alarm_stats`, `acknowledge_alarm`, `list_alarm_definitions` |
 | Production | `calculate_oee`, `get_production_kpis`, `list_production_assets`, `list_batches`, `list_production_batches`, `set_batch_result` |
-| Screens and reports | `list_screens`, `get_screen`, `list_symbols`, `create_screen_draft`, `create_dashboard_draft`, `generate_report` |
+| Screens and reports | `list_screens`, `get_screen`, `list_symbols`, `run_screen_action`, `create_screen_draft`, `create_dashboard_draft`, `generate_report` |
 | Configuration (admin) | `set_site_profile`, `test_device`, `create_device`, `update_device`, `create_tags`, `update_tags`, `define_production_asset`, `define_products`, OPC UA certificate actions |
 
 Full description: https://plcgateway.com/ai-mcp
@@ -83,13 +86,24 @@ Data goes out over an OPC UA server, MQTT, a Modbus TCP server and a REST API. D
   With a self-hosted model the data stays in your network.
 - **Same roles as people.** Viewer, operator and administrator rights apply to the assistant. Writing a value needs
   operator rights; configuration needs an administrator session, a local connection or the configuration token.
+  For read-only access, connect with a *viewer* user, or mark tags read-only in PLCGateway so nobody can write them.
+- **Write approval: a person confirms every write.** PLCGateway → Settings → Write approval decides, per credential,
+  which writes wait for a person. By default every `write_tag` and `run_screen_action` the assistant sends with the API
+  token or the MCP configuration token is held: nothing is written, and the tool answers `pending approval` with a
+  request id. Operators and administrators see the request at the top of every PLCGateway page (value, who asked, the
+  reason the assistant gave) and approve or reject it. Only a person signed in to PLCGateway can approve; the token
+  cannot approve its own request. Requests nobody decides on expire (10 minutes by default) and are never written. The
+  assistant checks the outcome with `write_request_status`. REST writes with the API token can be held the same way.
+- **Checked again at approval.** An approved screen action runs its conditions again with the values of that moment.
 - **Drafts, not live changes.** Screens and dashboards an assistant creates are drafts that a person reviews.
-- **Audit trail.** Every write is logged with the user's name.
+- **Audit trail.** Every write is logged with the credential that asked and, for approved requests, the person who
+  approved it, e.g. `api (approved by anna) wrote 230 to line1.SetTemp`.
 
 ## Requirements
 
 - PLCGateway SCADA or Connect, reachable from the computer running the AI client, with MCP enabled
-- An **API token**: PLCGateway → Settings → API token (operator rights: read, write, alarm acknowledgement)
+- An **API token**: PLCGateway → Settings → API token (operator rights: read, write, alarm acknowledgement; writes wait
+  for approval while write approval is on)
 - Node.js 18.17 or newer
 
 For setup work (adding devices and tags) create the **MCP configuration token** in Settings and switch it off when done.
